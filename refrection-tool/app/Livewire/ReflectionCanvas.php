@@ -12,13 +12,14 @@ class ReflectionCanvas extends Component
     public $date;
     public $goal;
     
+    // 目標ステータス管理
+    public $goalStatus;
+
     // モーダル管理用の変数
     public $isModalOpen = false;
     public $noteContent = '';
     public $isStarred = false;
     public $frequentTags = ['重要', '継続', '要確認', 'ひらめき'];
-    
-    // 👇 追加：現在編集中の付箋IDを記憶する変数
     public $editingNoteId = null; 
 
     public function mount($date)
@@ -27,38 +28,51 @@ class ReflectionCanvas extends Component
         $this->goal = DailyGoal::where('user_id', Auth::id())
                                ->where('target_date', $this->date)
                                ->first();
+        
+        // 【修正】初期ステータスを文字列の '進行中' ではなく、数値の 0 に変更します
+        $this->goalStatus = $this->goal->status ?? 0;
     }
 
-    // 「＋」ボタンで新規作成モーダルを開く
+    // 目標ステータスが変更されたら保存
+    public function updatedGoalStatus($value)
+    {
+        if ($this->goal) {
+            // 【修正】画面から送られてきた値を (int) で確実な数値（整数）に変換して保存します
+            $this->goal->status = (int) $value;
+            $this->goal->save();
+        }
+    }
+
+    // 新規作成モーダルを開く
     public function openModal()
     {
         $this->resetInput();
         $this->isModalOpen = true;
     }
 
-    // 👇 追加：付箋をクリックして「編集モード」でモーダルを開く
+    // 編集モードでモーダルを開く
     public function editNote($noteId)
     {
         $note = Note::where('user_id', Auth::id())->find($noteId);
         if ($note) {
-            $this->editingNoteId = $note->id;     // 編集中のIDをセット
-            $this->noteContent = $note->content;  // 元の文字をセット
-            $this->isStarred = $note->is_starred; // 元のスター状態をセット
-            $this->isModalOpen = true;            // モーダルを開く
+            $this->editingNoteId = $note->id;
+            $this->noteContent = $note->content;
+            $this->isStarred = $note->is_starred;
+            $this->isModalOpen = true;
         }
     }
 
     public function closeModal()
     {
         $this->isModalOpen = false;
-        $this->resetInput(); // 閉じる時に中身を綺麗にする
+        $this->resetInput();
     }
 
     private function resetInput()
     {
         $this->noteContent = '';
         $this->isStarred = false;
-        $this->editingNoteId = null; // 新規作成モードに戻す
+        $this->editingNoteId = null;
     }
 
     public function addTag($tag)
@@ -66,13 +80,12 @@ class ReflectionCanvas extends Component
         $this->noteContent .= " #{$tag}";
     }
 
-    // 👇 変更：保存時に「新規作成」か「更新」かを自動で振り分ける
+    // 付箋の保存（新規 or 更新）
     public function saveNote()
     {
         $this->validate(['noteContent' => 'required|max:200']);
 
         if ($this->editingNoteId) {
-            // 【編集（更新）の場合】
             $note = Note::where('user_id', Auth::id())->find($this->editingNoteId);
             if ($note) {
                 $note->content = $this->noteContent;
@@ -80,10 +93,9 @@ class ReflectionCanvas extends Component
                 $note->save();
             }
         } else {
-            // 【新規作成の場合】
             $note = new Note();
             $note->user_id = Auth::id();
-            $note->category_id = 0; // デフォルトは未仕分け
+            $note->category_id = 0; // デフォルト：未仕分け
             $note->content = $this->noteContent;
             $note->is_starred = $this->isStarred;
             $note->created_at = $this->date . ' ' . now()->format('H:i:s');
@@ -93,7 +105,7 @@ class ReflectionCanvas extends Component
         $this->closeModal();
     }
 
-    // カテゴリーの移動（ドラッグ＆ドロップ）
+    // ドラッグ＆ドロップ移動
     public function updateNoteCategory($noteId, $newCategoryId)
     {
         $note = Note::where('user_id', Auth::id())->find($noteId);
@@ -103,7 +115,7 @@ class ReflectionCanvas extends Component
         }
     }
 
-    // ゴミ箱で削除
+    // ゴミ箱削除
     public function deleteNote($noteId)
     {
         $note = Note::where('user_id', Auth::id())->find($noteId);
