@@ -5,26 +5,29 @@
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <meta name="csrf-token" content="{{ csrf_token() }}">
 
-        <title>{{ config('app.name', 'Laravel') }}</title>
+        <title>{{ config('app.name', 'Reflection Tool') }}</title>
 
-        <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
 
-        <!-- Scripts -->
         @vite(['resources/css/app.css', 'resources/js/app.js'])
     </head>
-    <body class="font-sans text-gray-900 antialiased">
-        <div class="min-h-screen flex flex-col sm:justify-center items-center pt-6 sm:pt-0 bg-gray-100 dark:bg-gray-900">
-            <div>
-                <a href="/" wire:navigate>
-                    <x-application-logo class="w-20 h-20 fill-current text-gray-500" />
+    {{-- 🎯 背景色をアプリ本来の落ち着いた薄いグレー（bg-gray-50）に設定し、画面の上下に py-12 の余白を持たせました --}}
+    <body class="font-sans text-gray-900 antialiased bg-gray-50">
+        <div class="min-h-screen flex flex-col sm:justify-center items-center pt-6 sm:pt-0 py-12">
+            
+            {{-- 🎯 ロゴとカードの間を程よくあけるために mb-6 に調整 --}}
+            <div class="mb-6 mt-10 sm:mt-0">
+                <a href="/" wire:navigate class="flex flex-col items-center group">
+                    <x-application-logo class="w-20 h-auto" />
                 </a>
             </div>
 
-            <div class="w-full sm:max-w-md mt-6 px-6 py-4 bg-white dark:bg-gray-800 shadow-md overflow-hidden sm:rounded-lg">
+            {{-- 🎯 白いカード（bg-white）にして、パディングを上下左右均等に px-8 py-10 に設定。これで詰まり感が消えます --}}
+            <div class="w-full sm:max-w-md px-8 py-10 bg-white shadow-xl shadow-gray-200/50 border border-gray-100 overflow-hidden sm:rounded-3xl relative">
                 {{ $slot }}
             </div>
+            
         </div>
     </body>
 </html>

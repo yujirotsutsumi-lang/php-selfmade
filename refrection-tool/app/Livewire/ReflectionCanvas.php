@@ -12,32 +12,43 @@ class ReflectionCanvas extends Component
     public $date;
     public $goal;
     
-    // 目標ステータス管理
+    // 目標ステータス管理 (0:進行中, 1:完了)
     public $goalStatus;
 
     // モーダル管理用の変数
     public $isModalOpen = false;
     public $noteContent = '';
     public $isStarred = false;
-    public $frequentTags = ['重要', '継続', '要確認', 'ひらめき'];
+    // 💡 変更：初期値は空っぽにしておきます
+    public $frequentTags = []; 
     public $editingNoteId = null; 
 
-    public function mount($date)
+    public function mount($date = null)
     {
-        $this->date = $date;
+        $this->date = $date ?? now()->toDateString();
         $this->goal = DailyGoal::where('user_id', Auth::id())
                                ->where('target_date', $this->date)
                                ->first();
         
-        // 【修正】初期ステータスを文字列の '進行中' ではなく、数値の 0 に変更します
         $this->goalStatus = $this->goal->status ?? 0;
+
+        // ==========================================
+        // 💡 追加：設定した「頻出タグ」をデータベースから読み込む
+        // ==========================================
+        $userTags = Auth::user()->frequent_tags;
+        
+        // ユーザーがタグを設定している場合はそれを使用し、無ければデフォルトを使用
+        if (!empty($userTags) && is_array($userTags)) {
+            $this->frequentTags = $userTags;
+        } else {
+            $this->frequentTags = ['重要', '継続', '要確認', 'ひらめき'];
+        }
     }
 
     // 目標ステータスが変更されたら保存
     public function updatedGoalStatus($value)
     {
         if ($this->goal) {
-            // 【修正】画面から送られてきた値を (int) で確実な数値（整数）に変換して保存します
             $this->goal->status = (int) $value;
             $this->goal->save();
         }
