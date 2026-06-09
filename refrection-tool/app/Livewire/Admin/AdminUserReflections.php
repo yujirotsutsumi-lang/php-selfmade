@@ -19,6 +19,9 @@ class AdminUserReflections extends Component
     public $starredDates = [];
     public $achievedDates = [];
 
+    // 🚀 【追加】グラフ表示用のデータ（成功, 学び, 行動 の数）
+    public $monthlyChartData = [0, 0, 0];
+
     public function mount()
     {
         if (!Auth::guard('admin')->check()) {
@@ -60,6 +63,21 @@ class AdminUserReflections extends Component
             ->where('status', 1) // 1 = 完了
             ->pluck('target_date')
             ->toArray();
+
+        // 🚀 【追加】4. 今月の付箋カテゴリ別の割合を集計（グラフ用）
+        $categoryCounts = Note::where('user_id', $this->user->id)
+            ->whereBetween('created_at', [$start, $end])
+            ->selectRaw('category_id, COUNT(*) as count')
+            ->groupBy('category_id')
+            ->pluck('count', 'category_id')
+            ->toArray();
+
+        // グラフ用に [成功の数, 学びの数, 行動の数] の配列を作る
+        $this->monthlyChartData = [
+            $categoryCounts[1] ?? 0, // 1:成功
+            $categoryCounts[2] ?? 0, // 2:学び
+            $categoryCounts[3] ?? 0, // 3:行動
+        ];
     }
 
     public function previousMonth()

@@ -11,59 +11,81 @@ use Illuminate\Support\Facades\Auth;
 class CalendarView extends Component
 {
     // カレンダー状態管理
-    public $currentMonth;      // 表示中の年月（例: '2026-05-01'）
-    public $selectedDate;      // 選択中の日付（例: '2026-05-29'）
-    public $isToday;           // 選択日が今日かどうか
+    public $currentMonth;
+    public $selectedDate;
+    public $isToday;
 
     // 目標設定（右パネル）用
     public $isEditingGoal = false;
     public $newGoalTitle = '';
     public $goal;
     public $notes;
-    
-    // 🚀 【追加】セレクトボックスの選択状態を管理するプロパティ
+
     public $goalStatus;
 
     // ヒートマップ集計用キャッシュ
     public $activityCounts = [];
     public $maxActivity = 0;
 
-    // 今月の★付き日付・目標達成日を入れておく配列（保管庫）
+    // 今月の★付き日付・目標達成日を入れておく配列
     public $starredDates = [];
     public $achievedDates = [];
 
+    // グラフ表示用のデータ（成功, 学び, 行動 の数）
+    public $monthlyChartData = [0, 0, 0];
+
+    // 🚀 【追加】過去の「明日へのアクション」を保持するプロパティ
+    public $previousActions = [];
+    public $previousActionDate = null;
+
     public function mount()
     {
-        // 初期状態は「今月」と「今日」を選択
         $this->currentMonth = Carbon::today()->startOfMonth()->toDateString();
         $this->selectedDate = Carbon::today()->toDateString();
-        
+
         $this->loadMonthActivities();
         $this->loadDateData();
     }
 
-    // 選択された日付の目標と付箋データを読み込む
     public function loadDateData()
     {
         $this->isToday = ($this->selectedDate === Carbon::today()->toDateString());
 
-        // 指定日の目標を取得
         $this->goal = DailyGoal::where('user_id', Auth::id())
             ->where('target_date', $this->selectedDate)
             ->first();
 
-        // 🚀 【追加】右側パネルのセレクトボックスに初期状態（0:進行中 または 1:完了）をセット
         $this->goalStatus = $this->goal ? $this->goal->status : 0;
 
-        // 指定日の付箋一覧を取得
         $this->notes = Note::where('user_id', Auth::id())
             ->whereDate('created_at', $this->selectedDate)
             ->get();
-            
+
+        // 🚀 【追加】選択日より前で、最後に「明日へのアクション（カテゴリ3）」を書いた日を探す
+        $lastActionNote = Note::where('user_id', Auth::id())
+            ->where('category_id', 3)
+            ->whereDate('created_at', '<', $this->selectedDate)
+            ->latest('created_at') // 一番新しい順
+            ->first();
+
+        if ($lastActionNote) {
+            // 見つかったら日付をフォーマットして保存（例：6/5）
+            $this->previousActionDate = $lastActionNote->created_at->format('n/j');
+
+            // その日の「明日へのアクション」をすべて取得
+            $this->previousActions = Note::where('user_id', Auth::id())
+                ->where('category_id', 3)
+                ->whereDate('created_at', $lastActionNote->created_at->toDateString())
+                ->get();
+        } else {
+            // 過去に一度も書いていない場合は空にする
+            $this->previousActions = collect();
+            $this->previousActionDate = null;
+        }
+
         $this->isEditingGoal = false;
     }
 
-    // 表示中の月全体の活動（付箋数 ＆ ★付き日付 ＆ 達成日）をまとめて集計
     public function loadMonthActivities()
     {
         $start = Carbon::parse($this->currentMonth)->startOfMonth();
@@ -79,7 +101,7 @@ class CalendarView extends Component
         $this->activityCounts = $activities->pluck('count', 'date')->toArray();
         $this->maxActivity = $activities->max('count') ?? 0;
 
-        // 2. 【N+1解消】今月の★がついている日付だけを、1回のクエリでまとめて取得！
+        // 2. 今月の★がついている日付を取得
         $this->starredDates = Note::where('user_id', Auth::id())
             ->whereBetween('created_at', [$start, $end])
             ->where('is_starred', true)
@@ -88,47 +110,53 @@ class CalendarView extends Component
             ->pluck('date')
             ->toArray();
 
-        // 3. 【N+1解消】今月の「目標達成した日付」だけを、1回のクエリでまとめて取得！
+        // 3. 今月の「目標達成した日付」を取得
         $this->achievedDates = DailyGoal::where('user_id', Auth::id())
             ->whereBetween('target_date', [$start->toDateString(), $end->toDateString()])
-            ->where('status', 1) // 1 = 完了
+            ->where('status', 1)
             ->pluck('target_date')
             ->toArray();
+
+        // 4. 今月の付箋カテゴリ別の割合を集計（グラフ用）
+        $categoryCounts = Note::where('user_id', Auth::id())
+            ->whereBetween('created_at', [$start, $end])
+            ->selectRaw('category_id, COUNT(*) as count')
+            ->groupBy('category_id')
+            ->pluck('count', 'category_id')
+            ->toArray();
+
+        // グラフ用に [成功の数, 学びの数, 行動の数] の配列を作る
+        $this->monthlyChartData = [
+            $categoryCounts[1] ?? 0, // 1:成功
+            $categoryCounts[2] ?? 0, // 2:学び
+            $categoryCounts[3] ?? 0, // 3:行動
+        ];
     }
 
     public function getColorLevel($date)
     {
         $count = $this->activityCounts[$date] ?? 0;
-
-        if ($count === 0) return 0; // 0枚の場合は色なし（グレー）
-
-        // 付箋3枚ごとにレベルを1上げる（1〜3枚=Lv1, 4〜6枚=Lv2...）
+        if ($count === 0) return 0;
         $level = (int) ceil($count / 2);
-
-        // どれだけたくさん書いても、最大レベルは「9」でストップさせる
         return max(1, min(9, $level));
     }
 
-    // 日付がクリックされたとき
     public function selectDate($date)
     {
         $this->selectedDate = $date;
         $this->loadDateData();
     }
 
-    // 月移動ロジック
     public function previousMonth()
     {
-        //300,000マイクロ秒（＝0.3秒）処理をストップさせる
-        usleep(300000); 
+        usleep(300000);
         $this->currentMonth = Carbon::parse($this->currentMonth)->subMonth()->startOfMonth()->toDateString();
         $this->loadMonthActivities();
     }
 
     public function nextMonth()
     {
-        //300,000マイクロ秒（＝0.3秒）処理をストップさせる
-        usleep(300000); 
+        usleep(300000);
         $this->currentMonth = Carbon::parse($this->currentMonth)->addMonth()->startOfMonth()->toDateString();
         $this->loadMonthActivities();
     }
@@ -141,7 +169,6 @@ class CalendarView extends Component
         $this->loadDateData();
     }
 
-    // 目標の編集・保存
     public function editGoal()
     {
         $this->newGoalTitle = $this->goal ? $this->goal->title : '';
@@ -165,10 +192,9 @@ class CalendarView extends Component
 
         $this->isEditingGoal = false;
         $this->loadDateData();
-        $this->loadMonthActivities(); // 🚀 【追加】保存した瞬間にカレンダーを更新！
+        $this->loadMonthActivities();
     }
 
-    // 🚀 【追加】画面のセレクトボックスで「進行中/完了」が切り替わった瞬間に自動で走る処理
     public function updatedGoalStatus($value)
     {
         $this->goal = DailyGoal::updateOrCreate(
@@ -177,13 +203,13 @@ class CalendarView extends Component
                 'target_date' => $this->selectedDate,
             ],
             [
-                'title' => $this->goal ? $this->goal->title : '今日の目標', // まだ目標がない場合はデフォルト値
-                'status' => $value, // 新しいステータス（0:進行中 または 1:完了）
+                'title' => $this->goal ? $this->goal->title : '今日の目標',
+                'status' => $value,
             ]
         );
 
         $this->loadDateData();
-        $this->loadMonthActivities(); // 🚀 ステータス変更時にカレンダーの✓マークを再集計！
+        $this->loadMonthActivities();
     }
 
     public function render()
@@ -192,7 +218,6 @@ class CalendarView extends Component
             ->layout('layouts.app');
     }
 
-    // 【超高速化】データベースには一切触れず、メモリ上の配列に日付があるか調べるだけに！
     public function hasStarredNote($date)
     {
         return in_array($date, $this->starredDates);

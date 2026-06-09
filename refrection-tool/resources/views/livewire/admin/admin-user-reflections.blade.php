@@ -1,5 +1,5 @@
 {{-- 📄 resources/views/livewire/admin/admin-user-reflections.blade.php --}}
-<div class="py-6 min-h-screen bg-gray-50" wire:poll.5s> {{-- ⚡ 5秒ごとにデータベースを自動で見に行く魔法 --}}
+<div class="py-6 min-h-screen bg-gray-50" wire:poll.5s>
     <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         
         {{-- 🔙 管理者トップ（ダッシュボード）に戻るボタン --}}
@@ -47,7 +47,7 @@
                 </div>
 
                 {{-- 日付グリッド --}}
-                <div class="grid grid-cols-7 gap-3 flex-grow transition-opacity duration-300" 
+                <div class="grid grid-cols-7 gap-3 flex-grow transition-opacity duration-300 mb-6" 
                      wire:loading.class="opacity-40"
                      wire:target="previousMonth, nextMonth, goToCurrentMonth, selectDate">
                     @php
@@ -87,27 +87,98 @@
                         <button wire:click="selectDate('{{ $date }}')" @if($isFuture) disabled @endif
                                 class="relative h-16 flex flex-col items-center justify-center rounded-2xl transition-all duration-200 {{ $bgClass }} {{ $isSelected }} {{ $isFuture ? 'opacity-30 cursor-not-allowed' : 'hover:scale-105' }}">
                                 @if($isAchieved)
-    <span class="absolute top-1 right-2 pointer-events-none" title="目標達成！">
-        <svg class="w-[14px] h-[14px] text-[#eaff00] drop-shadow-[0_0_4px_rgba(234,255,0,0.9)]" fill="currentColor" viewBox="0 0 512 512">
-            <path d="M226.5 92.9c14.3 42.9-.3 86.2-32.6 96.8s-70.3-15.6-84.6-58.5S110 45 142.3 34.4 212.2 50 226.5 92.9zm194.2 5.5c-15.2-42.6-56.1-59.5-91.2-37.7s-50.5 74.2-35.3 116.8 56.1 59.5 91.2 37.7 50.5-74.2 35.3-116.8zm-314.3 162c-35-21.8-76-4.9-91.2 37.7S30.7 415 65.8 436.8 141.8 441.7 157 399.1 141.4 282.2 106.4 260.4zm339 12.2c-18.4-41-62.1-53.7-97.4-28.5s-48.4 79-30 120 62.1 53.7 97.4 28.5 48.4-79 30-120zm-170.8-31.5c-41-11.4-86.5-1.9-114.7 24-27.1 24.8-37.7 60.1-27.5 94.7 11 37.1 45.4 62.2 83.3 64.9h2.3c4.1 0 8.3-.3 12.4-1 16-2.6 30.6-11.6 40.5-24.6 15.6-20.4 42-26.6 64-15 11.2 5.9 23.8 8.6 36.3 7.8 33.7-2 62.9-22 75.3-51.5 12-28.5 6.2-60.8-15.1-83.8-27-22-68.5-31-105.7-20.5-14.7 4.1-30.4 4.3-45.1 0-5.5-1.6-10.9-3.4-16-5.5z"/>
-        </svg>
-    </span>
-@endif
-
+                                    {{-- 変更点： -top-2 と -right-2 で枠の外に押し出し、z-10 で他の日付の下に隠れないようにする --}}
+                                    <span class="absolute -top-2 -right-2 z-10 pointer-events-none drop-shadow-md select-none" title="目標達成！">
+                                        {{-- スタンプ感を目立たせるため、少し大きめ(w-6 h-6)にしても可愛いです --}}
+                                        <img src="{{ asset('images/achieved.png') }}" alt="達成" class="w-6 h-6 object-contain transform rotate-12">
+                                    </span>
+                                @endif
                             <span class="text-lg font-bold">{{ $day }}</span>
-                            
                             @if($hasStar)
                                 <span class="absolute bottom-1.5 left-1/2 transform -translate-x-1/2 text-yellow-400 text-[10px] drop-shadow-sm">★</span>
                             @endif
                         </button>
                     @endfor
                 </div>
+
+                {{-- 🚀 【追加】ユーザーの振り返りバランス（ドーナツグラフ） --}}
+                <div class="mt-auto bg-gray-50 p-4 rounded-2xl border border-gray-100 flex items-center shadow-inner h-40">
+                    <div class="w-1/3 pr-4 border-r border-gray-200">
+                        <h3 class="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-1">User Balance</h3>
+                        <p class="text-sm font-bold text-gray-700 leading-tight">{{ $user->name }}さんの<br>振り返り傾向</p>
+                    </div>
+                    <div class="w-2/3 pl-4 h-full flex justify-center items-center"
+                        x-data="{
+                            chartInstance: null,
+                            init() {
+                                const renderChart = () => {
+                                    if (typeof Chart === 'undefined') {
+                                        setTimeout(renderChart, 50);
+                                        return;
+                                    }
+
+                                    const ctx = this.$refs.canvas.getContext('2d');
+                                    let values = $wire.monthlyChartData;
+                                    let isAllZero = (values[0] === 0 && values[1] === 0 && values[2] === 0);
+
+                                    this.chartInstance = new Chart(ctx, {
+                                        type: 'doughnut',
+                                        data: {
+                                            labels: isAllZero ? ['データなし'] : ['成功・良かった', '学び・改善', '明日へのアクション'],
+                                            datasets: [{
+                                                data: isAllZero ? [1] : values,
+                                                backgroundColor: isAllZero ? ['#e5e7eb'] : ['#fbcfe8', '#bbf7d0', '#bfdbfe'],
+                                                borderWidth: 2,
+                                                borderColor: '#ffffff',
+                                                hoverOffset: isAllZero ? 0 : 4
+                                            }]
+                                        },
+                                        options: {
+                                            responsive: true,
+                                            maintainAspectRatio: false,
+                                            cutout: '65%',
+                                            plugins: {
+                                                legend: { 
+                                                    position: 'right', 
+                                                    labels: { font: { size: 10, weight: 'bold' }, color: '#6b7280', usePointStyle: true, boxWidth: 6 } 
+                                                },
+                                                tooltip: {
+                                                    callbacks: {
+                                                        label: function(context) { 
+                                                            if(isAllZero) return ' まだ付箋がありません';
+                                                            return ' ' + context.raw + ' 枚'; 
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    });
+
+                                    $watch('$wire.monthlyChartData', newValues => {
+                                        let checkZero = (newValues[0] === 0 && newValues[1] === 0 && newValues[2] === 0);
+                                        this.chartInstance.data.labels = checkZero ? ['データなし'] : ['成功・良かった', '学び・改善', '明日へのアクション'];
+                                        this.chartInstance.data.datasets[0].data = checkZero ? [1] : newValues;
+                                        this.chartInstance.data.datasets[0].backgroundColor = checkZero ? ['#e5e7eb'] : ['#fbcfe8', '#bbf7d0', '#bfdbfe'];
+                                        this.chartInstance.data.datasets[0].hoverOffset = checkZero ? 0 : 4;
+                                        this.chartInstance.update();
+                                    });
+                                };
+                                renderChart();
+                            }
+                        }"
+                    >
+                        <div wire:ignore class="w-full h-full relative">
+                            <canvas x-ref="canvas"></canvas>
+                        </div>
+                    </div>
+                </div>
+
             </div>
 
             {{-- 🟠 右側：詳細表示パネル (2/5) 【管理者向けに完全閲覧専用にカスタム】 --}}
-            <div class="w-2/5 p-10 bg-gradient-to-br from-orange-50 to-white flex flex-col justify-between">
-                <div>
-                    <div class="mb-8">
+            <div class="w-2/5 p-8 bg-gradient-to-br from-orange-50 to-white flex flex-col justify-between max-h-[700px]">
+                <div class="flex flex-col h-full overflow-hidden">
+                    <div class="mb-8 flex-shrink-0">
                         <h3 class="text-[10px] font-black text-orange-300 uppercase tracking-[0.2em] mb-2">Selected Date</h3>
                         <p class="text-4xl font-black text-gray-800">
                             {{ \Carbon\Carbon::parse($selectedDate)->format('n/j') }}
@@ -117,7 +188,7 @@
                         </p>
                     </div>
 
-                    <div class="space-y-6 overflow-y-auto max-h-[550px] pr-2">
+                    <div class="space-y-6 overflow-y-auto pr-2 pb-4">
                         <div class="flex items-center py-2 px-4 bg-gray-200/60 rounded-full w-max">
                             <svg class="w-4 h-4 text-gray-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
                             <span class="text-xs font-bold text-gray-500 uppercase tracking-tighter">ユーザーログ（閲覧専用）</span>
@@ -156,7 +227,7 @@
                                                 @endif
                                             </li>
                                         @empty
-                                            <li class="text-xs text-gray-300 italic pl-4">付箋データがありません</li>
+                                            <li class="text-xs text-gray-300 italic pl-4 font-bold">付箋データがありません</li>
                                         @endforelse
                                     </ul>
                                 </div>
@@ -164,12 +235,11 @@
                         </div>
                     </div>
                 </div>
-
-                <div class="text-center text-[10px] text-gray-300 font-bold uppercase tracking-widest mt-6 flex-shrink-0">
-                    Peta-Refle Monitoring System
-                </div>
             </div>
 
         </div>
     </div>
 </div>
+
+{{-- 🚀 Chart.js の読み込み（必須） --}}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>

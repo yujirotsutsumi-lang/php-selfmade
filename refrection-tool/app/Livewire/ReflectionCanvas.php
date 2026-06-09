@@ -11,7 +11,7 @@ class ReflectionCanvas extends Component
 {
     public $date;
     public $goal;
-    
+
     // 目標ステータス管理 (0:進行中, 1:完了)
     public $goalStatus;
 
@@ -20,23 +20,23 @@ class ReflectionCanvas extends Component
     public $noteContent = '';
     public $isStarred = false;
     // 💡 変更：初期値は空っぽにしておきます
-    public $frequentTags = []; 
-    public $editingNoteId = null; 
+    public $frequentTags = [];
+    public $editingNoteId = null;
 
     public function mount($date = null)
     {
         $this->date = $date ?? now()->toDateString();
         $this->goal = DailyGoal::where('user_id', Auth::id())
-                               ->where('target_date', $this->date)
-                               ->first();
-        
+            ->where('target_date', $this->date)
+            ->first();
+
         $this->goalStatus = $this->goal->status ?? 0;
 
         // ==========================================
         // 💡 追加：設定した「頻出タグ」をデータベースから読み込む
         // ==========================================
         $userTags = Auth::user()->frequent_tags;
-        
+
         // ユーザーがタグを設定している場合はそれを使用し、無ければデフォルトを使用
         if (!empty($userTags) && is_array($userTags)) {
             $this->frequentTags = $userTags;
@@ -138,8 +138,8 @@ class ReflectionCanvas extends Component
     public function render()
     {
         $notes = Note::where('user_id', Auth::id())
-                     ->whereDate('created_at', $this->date)
-                     ->get();
+            ->whereDate('created_at', $this->date)
+            ->get();
 
         return view('livewire.reflection-canvas', [
             'notes' => $notes
